@@ -1,0 +1,45 @@
+package com.example.eumbev2.entity.auth;
+
+import com.example.eumbev2.entity.user.User;
+import jakarta.persistence.*;
+import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
+
+import java.time.Instant;
+
+/**
+ * Not in the ERD; required so `/auth/refresh` and `/auth/signout` can validate/revoke a
+ * specific session server-side. One row per active session; signin/refresh replace it
+ * (rotation), signout deletes it.
+ */
+@Entity
+@Table(name = "refresh_tokens")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class RefreshToken {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @Column(nullable = false, unique = true, length = 512)
+    private String token;
+
+    @Column(nullable = false)
+    private Instant expiresAt;
+
+    @CreationTimestamp
+    @Column(updatable = false, nullable = false)
+    private Instant createdAt;
+
+    public boolean isExpired() {
+        return Instant.now().isAfter(expiresAt);
+    }
+}
