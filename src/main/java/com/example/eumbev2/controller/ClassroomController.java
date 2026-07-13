@@ -2,10 +2,13 @@ package com.example.eumbev2.controller;
 
 import com.example.eumbev2.common.response.PageResponse;
 import com.example.eumbev2.dto.classroom.*;
+import com.example.eumbev2.dto.member.JoinByCodeRequest;
+import com.example.eumbev2.dto.member.MemberResponse;
 import com.example.eumbev2.entity.classroom.ClassStatus;
 import com.example.eumbev2.entity.classroom.MemberStatus;
 import com.example.eumbev2.entity.classroom.Role;
 import com.example.eumbev2.service.classroom.ClassroomService;
+import com.example.eumbev2.service.member.MemberService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -17,9 +20,11 @@ import org.springframework.web.bind.annotation.*;
 public class ClassroomController {
 
     private final ClassroomService classroomService;
+    private final MemberService memberService;
 
-    public ClassroomController(ClassroomService classroomService) {
+    public ClassroomController(ClassroomService classroomService, MemberService memberService) {
         this.classroomService = classroomService;
+        this.memberService = memberService;
     }
 
     @PostMapping
@@ -49,6 +54,12 @@ public class ClassroomController {
             @RequestParam(defaultValue = "20") int size
     ) {
         return classroomService.myClasses(role, status, membership, pageable(page, size));
+    }
+
+    @PostMapping("/join-by-code")
+    @ResponseStatus(HttpStatus.CREATED)
+    public MemberResponse joinByCode(@RequestBody JoinByCodeRequest request) {
+        return memberService.joinByCode(request);
     }
 
     @GetMapping("/{classId}")

@@ -3,6 +3,7 @@ package com.example.eumbev2.dto.application;
 import com.example.eumbev2.entity.application.ApplicationQuestion;
 import com.example.eumbev2.entity.application.QuestionType;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public record ApplicationQuestionResponse(
@@ -18,7 +19,8 @@ public record ApplicationQuestionResponse(
     public static ApplicationQuestionResponse from(ApplicationQuestion q) {
         return new ApplicationQuestionResponse(
                 q.getId(), q.getType(), q.getOrderNo(), q.getTitle(), q.getDescription(),
-                q.isRequired(), q.getMaxLength(), q.getOptions()
+                q.isRequired(), q.getMaxLength(),
+                q.getOptions() == null ? List.of() : new ArrayList<>(q.getOptions())
         );
     }
 }

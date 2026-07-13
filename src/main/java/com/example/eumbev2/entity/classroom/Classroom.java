@@ -30,7 +30,7 @@ public class Classroom {
     @Column(nullable = false)
     private String title;
 
-    @Lob
+    @Column(length = 5000)
     private String description;
 
     @Lob

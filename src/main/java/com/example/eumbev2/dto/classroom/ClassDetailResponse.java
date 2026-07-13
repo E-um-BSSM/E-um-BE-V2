@@ -7,6 +7,7 @@ import com.example.eumbev2.entity.classroom.Classroom;
 import com.example.eumbev2.entity.classroom.Role;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 public record ClassDetailResponse(
@@ -30,7 +31,8 @@ public record ClassDetailResponse(
 ) {
     public static ClassDetailResponse of(Classroom c, long menteeCount, String inviteCode, long assignmentCount, Role myRole) {
         return new ClassDetailResponse(
-                c.getId(), c.getTitle(), c.getDescription(), c.getDifficulty(), c.getTags(),
+                c.getId(), c.getTitle(), c.getDescription(), c.getDifficulty(),
+                c.getTags() == null ? List.of() : new ArrayList<>(c.getTags()),
                 c.getAccessScope(), c.getStatus(), c.getBannerImageUrl(),
                 UserSummaryResponse.from(c.getMentor()), menteeCount, inviteCode, assignmentCount, myRole,
                 c.getCreatedAt(), c.getUpdatedAt(), c.getMentorIntroduction(), c.getGuide()

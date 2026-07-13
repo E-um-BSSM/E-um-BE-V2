@@ -14,6 +14,7 @@ import com.example.eumbev2.entity.user.User;
 import com.example.eumbev2.repository.application.ApplicationAnswerRepository;
 import com.example.eumbev2.repository.application.ApplicationQuestionRepository;
 import com.example.eumbev2.repository.classroom.ClassroomMemberRepository;
+import com.example.eumbev2.repository.classroom.ClassroomRepository;
 import com.example.eumbev2.repository.user.UserRepository;
 import com.example.eumbev2.service.classroom.ClassroomService;
 import org.springframework.data.domain.Page;
@@ -29,6 +30,7 @@ import java.util.List;
 public class MemberService {
 
     private final ClassroomService classroomService;
+    private final ClassroomRepository classroomRepository;
     private final ClassroomMemberRepository classroomMemberRepository;
     private final ApplicationQuestionRepository applicationQuestionRepository;
     private final ApplicationAnswerRepository applicationAnswerRepository;
@@ -36,12 +38,14 @@ public class MemberService {
 
     public MemberService(
             ClassroomService classroomService,
+            ClassroomRepository classroomRepository,
             ClassroomMemberRepository classroomMemberRepository,
             ApplicationQuestionRepository applicationQuestionRepository,
             ApplicationAnswerRepository applicationAnswerRepository,
             UserRepository userRepository
     ) {
         this.classroomService = classroomService;
+        this.classroomRepository = classroomRepository;
         this.classroomMemberRepository = classroomMemberRepository;
         this.applicationQuestionRepository = applicationQuestionRepository;
         this.applicationAnswerRepository = applicationAnswerRepository;
@@ -103,6 +107,21 @@ public class MemberService {
         }
 
         return MemberResponse.from(membership);
+    }
+
+    /**
+     * 초대 코드만으로 클래스를 찾아 가입 신청한다(멘티). 코드에 해당하는 클래스를 조회한 뒤
+     * 기존 join 로직을 재사용한다. classId를 모르는 초대 링크/코드 입력 진입점을 위한 것.
+     */
+    public MemberResponse joinByCode(JoinByCodeRequest request) {
+        String code = request == null ? null : request.inviteCode();
+        if (code == null || code.isBlank()) {
+            throw new ApiException(ErrorCode.INVITE_CODE_REQUIRED);
+        }
+        Classroom classroom = classroomRepository.findByClassroomCode(code)
+                .filter(Classroom::isInviteCodeValid)
+                .orElseThrow(() -> new ApiException(ErrorCode.INVALID_INVITE_CODE));
+        return join(classroom.getId(), new JoinRequest(code, request.message(), request.answers()));
     }
 
     public void cancelJoin(Long classId) {
