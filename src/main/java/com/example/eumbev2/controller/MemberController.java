@@ -9,7 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/classes/{classId}")
+@RequestMapping("/classes")
 public class MemberController {
 
     private final MemberService memberService;
@@ -18,30 +18,36 @@ public class MemberController {
         this.memberService = memberService;
     }
 
-    @PostMapping("/invite")
+    @PostMapping("/{classId}/invite")
     @ResponseStatus(HttpStatus.CREATED)
     public InviteCodeResponse createInvite(@PathVariable Long classId) {
         return memberService.createInvite(classId);
     }
 
-    @GetMapping("/invite")
+    @GetMapping("/{classId}/invite")
     public InviteCodeResponse getInvite(@PathVariable Long classId) {
         return memberService.getInvite(classId);
     }
 
-    @PostMapping("/join")
+    @PostMapping("/{classId}/join")
     @ResponseStatus(HttpStatus.CREATED)
     public MemberResponse join(@PathVariable Long classId, @RequestBody(required = false) JoinRequest request) {
         return memberService.join(classId, request);
     }
 
-    @DeleteMapping("/join")
+    @PostMapping("/join-by-code")
+    @ResponseStatus(HttpStatus.CREATED)
+    public MemberResponse joinByCode(@RequestBody JoinByCodeRequest request) {
+        return memberService.joinByCode(request);
+    }
+
+    @DeleteMapping("/{classId}/join")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void cancelJoin(@PathVariable Long classId) {
         memberService.cancelJoin(classId);
     }
 
-    @GetMapping("/waiting")
+    @GetMapping("/{classId}/waiting")
     public PageResponse<WaitingMemberResponse> waiting(
             @PathVariable Long classId,
             @RequestParam(defaultValue = "0") int page,
@@ -50,7 +56,7 @@ public class MemberController {
         return memberService.waitingList(classId, PageRequest.of(page, size));
     }
 
-    @GetMapping("/members")
+    @GetMapping("/{classId}/members")
     public PageResponse<MemberResponse> members(
             @PathVariable Long classId,
             @RequestParam(defaultValue = "0") int page,
@@ -59,12 +65,12 @@ public class MemberController {
         return memberService.members(classId, PageRequest.of(page, size));
     }
 
-    @PatchMapping("/members/{userId}/accept")
+    @PatchMapping("/{classId}/members/{userId}/accept")
     public MemberResponse accept(@PathVariable Long classId, @PathVariable Long userId) {
         return memberService.accept(classId, userId);
     }
 
-    @DeleteMapping("/members/{userId}")
+    @DeleteMapping("/{classId}/members/{userId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void remove(@PathVariable Long classId, @PathVariable Long userId) {
         memberService.removeOrReject(classId, userId);
