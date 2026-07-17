@@ -5,6 +5,7 @@ import com.example.eumbev2.common.exception.ErrorCode;
 import com.example.eumbev2.common.security.JwtTokenProvider;
 import com.example.eumbev2.common.security.SecurityUtils;
 import com.example.eumbev2.common.util.CodeGenerator;
+import com.example.eumbev2.common.util.TokenDigest;
 import com.example.eumbev2.dto.auth.*;
 import com.example.eumbev2.entity.auth.EmailVerification;
 import com.example.eumbev2.entity.auth.PasswordResetToken;
@@ -104,7 +105,7 @@ public class AuthService {
     }
 
     public AuthTokensResponse refresh(RefreshRequest request) {
-        RefreshToken stored = refreshTokenRepository.findByToken(request.refreshToken())
+        RefreshToken stored = refreshTokenRepository.findByTokenDigest(TokenDigest.sha256(request.refreshToken()))
                 .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REFRESH_TOKEN));
         if (stored.isExpired()) {
             refreshTokenRepository.delete(stored);
@@ -161,7 +162,7 @@ public class AuthService {
             String token = CodeGenerator.opaqueToken();
             PasswordResetToken resetToken = PasswordResetToken.builder()
                     .user(user)
-                    .token(token)
+                    .tokenDigest(TokenDigest.sha256(token))
                     .used(false)
                     .expiresAt(Instant.now().plusSeconds(passwordResetExpiryMinutes * 60))
                     .build();
@@ -173,7 +174,7 @@ public class AuthService {
     }
 
     public void confirmPasswordReset(PasswordResetConfirmRequest request) {
-        PasswordResetToken resetToken = passwordResetTokenRepository.findByToken(request.token())
+        PasswordResetToken resetToken = passwordResetTokenRepository.findByTokenDigest(TokenDigest.sha256(request.token()))
                 .orElseThrow(() -> new ApiException(ErrorCode.INVALID_RESET_TOKEN));
         if (resetToken.isExpired() || resetToken.isUsed()) {
             throw new ApiException(ErrorCode.INVALID_RESET_TOKEN);
@@ -191,7 +192,7 @@ public class AuthService {
 
         RefreshToken refreshToken = RefreshToken.builder()
                 .user(user)
-                .token(refreshTokenValue)
+                .tokenDigest(TokenDigest.sha256(refreshTokenValue))
                 .expiresAt(Instant.now().plusSeconds(validitySeconds))
                 .build();
         refreshTokenRepository.save(refreshToken);
