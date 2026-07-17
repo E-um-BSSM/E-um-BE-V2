@@ -4,6 +4,7 @@ import com.example.eumbev2.common.exception.ErrorCode;
 import com.example.eumbev2.common.response.ErrorResponse;
 import com.example.eumbev2.repository.user.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
@@ -19,6 +20,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.Arrays;
 import java.util.List;
 
 @Configuration
@@ -28,24 +30,48 @@ public class SecurityConfig {
     private final JwtTokenProvider jwtTokenProvider;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
+    private final List<String> corsAllowedOrigins;
+    private final boolean corsAllowCredentials;
 
-    public SecurityConfig(JwtTokenProvider jwtTokenProvider, UserRepository userRepository, ObjectMapper objectMapper) {
+    public SecurityConfig(
+            JwtTokenProvider jwtTokenProvider,
+            UserRepository userRepository,
+            ObjectMapper objectMapper,
+            @Value("${app.cors.allowed-origins:http://localhost:5173}") String corsAllowedOrigins,
+            @Value("${app.cors.allow-credentials:false}") boolean corsAllowCredentials
+    ) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.userRepository = userRepository;
         this.objectMapper = objectMapper;
+        this.corsAllowedOrigins = parseOrigins(corsAllowedOrigins);
+        this.corsAllowCredentials = corsAllowCredentials;
     }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
+        if (corsAllowedOrigins.isEmpty()) {
+            throw new IllegalStateException("At least one CORS allowed origin must be configured");
+        }
+        if (corsAllowCredentials && corsAllowedOrigins.contains("*")) {
+            throw new IllegalStateException("CORS credentials cannot be enabled with wildcard origins");
+        }
+
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:5173"));
+        config.setAllowedOrigins(corsAllowedOrigins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
-        config.setAllowCredentials(true);
+        config.setAllowCredentials(corsAllowCredentials);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
         return source;
+    }
+
+    private List<String> parseOrigins(String origins) {
+        return Arrays.stream(origins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isBlank())
+                .toList();
     }
 
     @Bean

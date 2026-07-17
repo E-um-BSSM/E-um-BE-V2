@@ -9,8 +9,8 @@ import java.time.Instant;
 
 /**
  * Not in the ERD; required so `/auth/refresh` and `/auth/signout` can validate/revoke a
- * specific session server-side. One row per active session; signin/refresh replace it
- * (rotation), signout deletes it.
+ * specific session server-side. One row per active session; refresh rotates the token digest
+ * while preserving the session metadata.
  */
 @Entity
 @Table(name = "refresh_tokens")
@@ -29,11 +29,23 @@ public class RefreshToken {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(nullable = false, unique = true, length = 512)
-    private String token;
+    @Column(name = "token", nullable = false, unique = true, length = 64)
+    private String tokenDigest;
+
+    @Column(nullable = false, unique = true, length = 36)
+    private String sessionId;
 
     @Column(nullable = false)
     private Instant expiresAt;
+
+    @Column(nullable = false)
+    private boolean keepSignedIn;
+
+    @Column(length = 512)
+    private String deviceInfo;
+
+    @Column(nullable = false)
+    private Instant lastUsedAt;
 
     @CreationTimestamp
     @Column(updatable = false, nullable = false)

@@ -25,8 +25,8 @@ public class PasswordResetToken {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(nullable = false, unique = true)
-    private String token;
+    @Column(name = "token", nullable = false, unique = true, length = 64)
+    private String tokenDigest;
 
     @Column(nullable = false)
     private boolean used;

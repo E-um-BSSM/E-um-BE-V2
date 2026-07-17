@@ -5,6 +5,7 @@ import com.example.eumbev2.common.exception.ErrorCode;
 import com.example.eumbev2.common.security.JwtTokenProvider;
 import com.example.eumbev2.common.security.SecurityUtils;
 import com.example.eumbev2.common.util.CodeGenerator;
+import com.example.eumbev2.common.util.TokenDigest;
 import com.example.eumbev2.dto.auth.*;
 import com.example.eumbev2.entity.auth.EmailVerification;
 import com.example.eumbev2.entity.auth.PasswordResetToken;
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Service
 @Transactional
@@ -64,7 +66,7 @@ public class AuthService {
         this.passwordResetExpiryMinutes = passwordResetExpiryMinutes;
     }
 
-    public AuthTokensResponse signup(SignupRequest request) {
+    public AuthTokensResponse signup(SignupRequest request, String deviceInfo) {
         if (userRepository.existsByUsername(request.username())) {
             throw new ApiException(ErrorCode.USERNAME_TAKEN);
         }
@@ -90,32 +92,36 @@ public class AuthService {
                 .build();
         userRepository.save(user);
 
-        return issueTokens(user, false);
+        return issueTokens(user, false, deviceInfo);
     }
 
-    public AuthTokensResponse signin(SigninRequest request) {
+    public AuthTokensResponse signin(SigninRequest request, String deviceInfo) {
         User user = userRepository.findByUsername(request.username())
                 .orElseThrow(() -> new ApiException(ErrorCode.INVALID_CREDENTIALS));
         if (!passwordEncoder.matches(request.password(), user.getPassword())) {
             throw new ApiException(ErrorCode.INVALID_CREDENTIALS);
         }
-        refreshTokenRepository.deleteByUser(user);
-        return issueTokens(user, request.keepSignedInOrDefault());
+        return issueTokens(user, request.keepSignedInOrDefault(), deviceInfo);
     }
 
     public AuthTokensResponse refresh(RefreshRequest request) {
-        RefreshToken stored = refreshTokenRepository.findByToken(request.refreshToken())
+        RefreshToken stored = refreshTokenRepository.findByTokenDigest(TokenDigest.sha256(request.refreshToken()))
                 .orElseThrow(() -> new ApiException(ErrorCode.INVALID_REFRESH_TOKEN));
         if (stored.isExpired()) {
             refreshTokenRepository.delete(stored);
             throw new ApiException(ErrorCode.INVALID_REFRESH_TOKEN);
         }
         User user = stored.getUser();
-        refreshTokenRepository.delete(stored);
-        return issueTokens(user, false);
+        boolean keepSignedIn = stored.isKeepSignedIn();
+        return rotateTokens(user, stored, keepSignedIn);
     }
 
-    public void signout() {
+    public void signout(RefreshRequest request) {
+        User user = SecurityUtils.getCurrentUser();
+        refreshTokenRepository.deleteByUserAndTokenDigest(user, TokenDigest.sha256(request.refreshToken()));
+    }
+
+    public void signoutAll() {
         User user = SecurityUtils.getCurrentUser();
         refreshTokenRepository.deleteByUser(user);
     }
@@ -158,10 +164,11 @@ public class AuthService {
 
     public void requestPasswordReset(PasswordResetRequest request) {
         userRepository.findByEmail(request.email()).ifPresent(user -> {
+            passwordResetTokenRepository.markUnusedTokensUsedByUser(user);
             String token = CodeGenerator.opaqueToken();
             PasswordResetToken resetToken = PasswordResetToken.builder()
                     .user(user)
-                    .token(token)
+                    .tokenDigest(TokenDigest.sha256(token))
                     .used(false)
                     .expiresAt(Instant.now().plusSeconds(passwordResetExpiryMinutes * 60))
                     .build();
@@ -173,29 +180,54 @@ public class AuthService {
     }
 
     public void confirmPasswordReset(PasswordResetConfirmRequest request) {
-        PasswordResetToken resetToken = passwordResetTokenRepository.findByToken(request.token())
+        PasswordResetToken resetToken = passwordResetTokenRepository.findByTokenDigest(TokenDigest.sha256(request.token()))
                 .orElseThrow(() -> new ApiException(ErrorCode.INVALID_RESET_TOKEN));
         if (resetToken.isExpired() || resetToken.isUsed()) {
             throw new ApiException(ErrorCode.INVALID_RESET_TOKEN);
         }
         User user = resetToken.getUser();
         user.setPassword(passwordEncoder.encode(request.newPassword()));
-        resetToken.setUsed(true);
+        passwordResetTokenRepository.markUnusedTokensUsedByUser(user);
         refreshTokenRepository.deleteByUser(user);
     }
 
-    private AuthTokensResponse issueTokens(User user, boolean keepSignedIn) {
+    private AuthTokensResponse issueTokens(User user, boolean keepSignedIn, String deviceInfo) {
         String accessToken = jwtTokenProvider.generateAccessToken(user);
         String refreshTokenValue = CodeGenerator.opaqueToken();
         long validitySeconds = keepSignedIn ? refreshTokenKeepSignedInValiditySeconds : refreshTokenValiditySeconds;
+        Instant now = Instant.now();
 
         RefreshToken refreshToken = RefreshToken.builder()
                 .user(user)
-                .token(refreshTokenValue)
-                .expiresAt(Instant.now().plusSeconds(validitySeconds))
+                .tokenDigest(TokenDigest.sha256(refreshTokenValue))
+                .sessionId(UUID.randomUUID().toString())
+                .expiresAt(now.plusSeconds(validitySeconds))
+                .keepSignedIn(keepSignedIn)
+                .deviceInfo(trimDeviceInfo(deviceInfo))
+                .lastUsedAt(now)
                 .build();
         refreshTokenRepository.save(refreshToken);
 
         return AuthTokensResponse.of(accessToken, refreshTokenValue, jwtTokenProvider.getAccessTokenValiditySeconds());
+    }
+
+    private AuthTokensResponse rotateTokens(User user, RefreshToken stored, boolean keepSignedIn) {
+        String accessToken = jwtTokenProvider.generateAccessToken(user);
+        String refreshTokenValue = CodeGenerator.opaqueToken();
+        long validitySeconds = keepSignedIn ? refreshTokenKeepSignedInValiditySeconds : refreshTokenValiditySeconds;
+        Instant now = Instant.now();
+
+        stored.setTokenDigest(TokenDigest.sha256(refreshTokenValue));
+        stored.setExpiresAt(now.plusSeconds(validitySeconds));
+        stored.setLastUsedAt(now);
+
+        return AuthTokensResponse.of(accessToken, refreshTokenValue, jwtTokenProvider.getAccessTokenValiditySeconds());
+    }
+
+    private String trimDeviceInfo(String deviceInfo) {
+        if (deviceInfo == null || deviceInfo.isBlank()) {
+            return null;
+        }
+        return deviceInfo.length() <= 512 ? deviceInfo : deviceInfo.substring(0, 512);
     }
 }
