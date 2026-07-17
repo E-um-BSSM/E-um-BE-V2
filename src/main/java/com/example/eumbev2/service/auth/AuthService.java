@@ -112,8 +112,9 @@ public class AuthService {
             throw new ApiException(ErrorCode.INVALID_REFRESH_TOKEN);
         }
         User user = stored.getUser();
+        boolean keepSignedIn = stored.isKeepSignedIn();
         refreshTokenRepository.delete(stored);
-        return issueTokens(user, false);
+        return issueTokens(user, keepSignedIn);
     }
 
     public void signout() {
@@ -195,6 +196,7 @@ public class AuthService {
                 .user(user)
                 .tokenDigest(TokenDigest.sha256(refreshTokenValue))
                 .expiresAt(Instant.now().plusSeconds(validitySeconds))
+                .keepSignedIn(keepSignedIn)
                 .build();
         refreshTokenRepository.save(refreshToken);
 

@@ -35,6 +35,9 @@ public class RefreshToken {
     @Column(nullable = false)
     private Instant expiresAt;
 
+    @Column(nullable = false)
+    private boolean keepSignedIn;
+
     @CreationTimestamp
     @Column(updatable = false, nullable = false)
     private Instant createdAt;
