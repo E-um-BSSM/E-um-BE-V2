@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Service
 @Transactional
@@ -65,7 +66,7 @@ public class AuthService {
         this.passwordResetExpiryMinutes = passwordResetExpiryMinutes;
     }
 
-    public AuthTokensResponse signup(SignupRequest request) {
+    public AuthTokensResponse signup(SignupRequest request, String deviceInfo) {
         if (userRepository.existsByUsername(request.username())) {
             throw new ApiException(ErrorCode.USERNAME_TAKEN);
         }
@@ -91,17 +92,16 @@ public class AuthService {
                 .build();
         userRepository.save(user);
 
-        return issueTokens(user, false);
+        return issueTokens(user, false, deviceInfo);
     }
 
-    public AuthTokensResponse signin(SigninRequest request) {
+    public AuthTokensResponse signin(SigninRequest request, String deviceInfo) {
         User user = userRepository.findByUsername(request.username())
                 .orElseThrow(() -> new ApiException(ErrorCode.INVALID_CREDENTIALS));
         if (!passwordEncoder.matches(request.password(), user.getPassword())) {
             throw new ApiException(ErrorCode.INVALID_CREDENTIALS);
         }
-        refreshTokenRepository.deleteByUser(user);
-        return issueTokens(user, request.keepSignedInOrDefault());
+        return issueTokens(user, request.keepSignedInOrDefault(), deviceInfo);
     }
 
     public AuthTokensResponse refresh(RefreshRequest request) {
@@ -113,11 +113,15 @@ public class AuthService {
         }
         User user = stored.getUser();
         boolean keepSignedIn = stored.isKeepSignedIn();
-        refreshTokenRepository.delete(stored);
-        return issueTokens(user, keepSignedIn);
+        return rotateTokens(user, stored, keepSignedIn);
     }
 
-    public void signout() {
+    public void signout(RefreshRequest request) {
+        User user = SecurityUtils.getCurrentUser();
+        refreshTokenRepository.deleteByUserAndTokenDigest(user, TokenDigest.sha256(request.refreshToken()));
+    }
+
+    public void signoutAll() {
         User user = SecurityUtils.getCurrentUser();
         refreshTokenRepository.deleteByUser(user);
     }
@@ -187,19 +191,43 @@ public class AuthService {
         refreshTokenRepository.deleteByUser(user);
     }
 
-    private AuthTokensResponse issueTokens(User user, boolean keepSignedIn) {
+    private AuthTokensResponse issueTokens(User user, boolean keepSignedIn, String deviceInfo) {
         String accessToken = jwtTokenProvider.generateAccessToken(user);
         String refreshTokenValue = CodeGenerator.opaqueToken();
         long validitySeconds = keepSignedIn ? refreshTokenKeepSignedInValiditySeconds : refreshTokenValiditySeconds;
+        Instant now = Instant.now();
 
         RefreshToken refreshToken = RefreshToken.builder()
                 .user(user)
                 .tokenDigest(TokenDigest.sha256(refreshTokenValue))
-                .expiresAt(Instant.now().plusSeconds(validitySeconds))
+                .sessionId(UUID.randomUUID().toString())
+                .expiresAt(now.plusSeconds(validitySeconds))
                 .keepSignedIn(keepSignedIn)
+                .deviceInfo(trimDeviceInfo(deviceInfo))
+                .lastUsedAt(now)
                 .build();
         refreshTokenRepository.save(refreshToken);
 
         return AuthTokensResponse.of(accessToken, refreshTokenValue, jwtTokenProvider.getAccessTokenValiditySeconds());
+    }
+
+    private AuthTokensResponse rotateTokens(User user, RefreshToken stored, boolean keepSignedIn) {
+        String accessToken = jwtTokenProvider.generateAccessToken(user);
+        String refreshTokenValue = CodeGenerator.opaqueToken();
+        long validitySeconds = keepSignedIn ? refreshTokenKeepSignedInValiditySeconds : refreshTokenValiditySeconds;
+        Instant now = Instant.now();
+
+        stored.setTokenDigest(TokenDigest.sha256(refreshTokenValue));
+        stored.setExpiresAt(now.plusSeconds(validitySeconds));
+        stored.setLastUsedAt(now);
+
+        return AuthTokensResponse.of(accessToken, refreshTokenValue, jwtTokenProvider.getAccessTokenValiditySeconds());
+    }
+
+    private String trimDeviceInfo(String deviceInfo) {
+        if (deviceInfo == null || deviceInfo.isBlank()) {
+            return null;
+        }
+        return deviceInfo.length() <= 512 ? deviceInfo : deviceInfo.substring(0, 512);
     }
 }

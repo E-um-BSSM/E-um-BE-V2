@@ -25,15 +25,15 @@ public class AuthController {
 
     @PostMapping("/signup")
     @ResponseStatus(HttpStatus.CREATED)
-    public AuthTokensResponse signup(@Valid @RequestBody SignupRequest request) {
-        return authService.signup(request);
+    public AuthTokensResponse signup(@Valid @RequestBody SignupRequest request, HttpServletRequest servletRequest) {
+        return authService.signup(request, servletRequest.getHeader("User-Agent"));
     }
 
     @PostMapping("/signin")
     public AuthTokensResponse signin(@Valid @RequestBody SigninRequest request, HttpServletRequest servletRequest) {
         authRateLimitService.checkSignin(servletRequest, request.username());
         try {
-            AuthTokensResponse response = authService.signin(request);
+            AuthTokensResponse response = authService.signin(request, servletRequest.getHeader("User-Agent"));
             authRateLimitService.clearSigninFailures(request.username());
             return response;
         } catch (ApiException ex) {
@@ -52,8 +52,14 @@ public class AuthController {
 
     @PostMapping("/signout")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void signout() {
-        authService.signout();
+    public void signout(@Valid @RequestBody RefreshRequest request) {
+        authService.signout(request);
+    }
+
+    @PostMapping("/signout-all")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void signoutAll() {
+        authService.signoutAll();
     }
 
     @GetMapping("/check-username")
