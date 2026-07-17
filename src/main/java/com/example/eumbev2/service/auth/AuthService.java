@@ -159,6 +159,7 @@ public class AuthService {
 
     public void requestPasswordReset(PasswordResetRequest request) {
         userRepository.findByEmail(request.email()).ifPresent(user -> {
+            passwordResetTokenRepository.markUnusedTokensUsedByUser(user);
             String token = CodeGenerator.opaqueToken();
             PasswordResetToken resetToken = PasswordResetToken.builder()
                     .user(user)
@@ -181,7 +182,7 @@ public class AuthService {
         }
         User user = resetToken.getUser();
         user.setPassword(passwordEncoder.encode(request.newPassword()));
-        resetToken.setUsed(true);
+        passwordResetTokenRepository.markUnusedTokensUsedByUser(user);
         refreshTokenRepository.deleteByUser(user);
     }
 
