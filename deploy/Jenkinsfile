@@ -1,0 +1,54 @@
+// Requires: the Jenkins agent running this pipeline has Docker + Docker Compose v2 available,
+// and a "Secret file" credential containing the full deploy/.env content
+// (see deploy/.env.example for the variables it must define).
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        COMPOSE_FILE   = 'deploy/docker-compose.yml'
+        ENV_FILE_PATH  = 'deploy/.env'
+        ENV_CREDENTIAL_ID = 'eumbe-deploy-env'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Load .env from credentials') {
+            steps {
+                withCredentials([file(credentialsId: "${ENV_CREDENTIAL_ID}", variable: 'ENV_SECRET_FILE')]) {
+                    sh 'cp "$ENV_SECRET_FILE" "$ENV_FILE_PATH"'
+                }
+            }
+        }
+
+        stage('Build image') {
+            steps {
+                sh 'docker compose --env-file "$ENV_FILE_PATH" -f "$COMPOSE_FILE" build'
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh 'docker compose --env-file "$ENV_FILE_PATH" -f "$COMPOSE_FILE" up -d --remove-orphans'
+            }
+        }
+    }
+
+    post {
+        failure {
+            sh 'docker compose --env-file "$ENV_FILE_PATH" -f "$COMPOSE_FILE" logs --tail=200 app || true'
+        }
+        cleanup {
+            sh 'rm -f "$ENV_FILE_PATH"'
+        }
+    }
+}

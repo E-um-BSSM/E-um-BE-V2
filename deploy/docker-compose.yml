@@ -1,0 +1,42 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: eumbe-app:latest
+    container_name: eumbe-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      # Safety net only — deploy/.env.example already documents these as required.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5174}
+
+  mysql:
+    image: mysql:8.0
+    container_name: eumbe-mysql
+    restart: unless-stopped
+    environment:
+      # DB_USERNAME is "root" in this project's .env — the official mysql image
+      # refuses to start if MYSQL_USER is also set to "root", so root auth is
+      # configured solely via MYSQL_ROOT_PASSWORD here.
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root}
+      MYSQL_DATABASE: eumbe
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD:-root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mysql-data:
